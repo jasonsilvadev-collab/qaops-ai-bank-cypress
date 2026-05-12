@@ -1,7 +1,19 @@
 describe('API - Fluxo de Registro de Usuário guiado pelo Google Gemini', () => {
 
   it('Deve gerar cenários dinâmicos e validar o comportamento da API reqres.in', () => {
-    
+    const reqresKey = Cypress.env('REQRES_API_KEY');
+    if (!reqresKey) {
+      throw new Error(
+        'Defina REQRES_API_KEY (header x-api-key do ReqRes). Chave gratuita: https://app.reqres.in/api-keys — no CI, use o secret REQRES_API_KEY.'
+      );
+    }
+
+    const reqresHeaders = {
+      'Content-Type': 'application/json',
+      'x-api-key': reqresKey,
+      'X-Reqres-Env': 'prod',
+    };
+
     // O Cypress pede à IA do Google para gerar os cenários
     cy.task('gerarMassaDeDadosRegistro').then((cenariosGerados) => {
       expect(cenariosGerados).to.be.an('array').that.is.not.empty;
@@ -16,9 +28,9 @@ describe('API - Fluxo de Registro de Usuário guiado pelo Google Gemini', () => 
           failOnStatusCode: false, // Permite que a API devolva Erro 400 sem quebrar o teste
           body: {
             email: cenario.email,
-            password: cenario.password
+            password: cenario.password ?? '',
           },
-          headers: { 'Content-Type': 'application/json' }
+          headers: reqresHeaders,
         }).then((response) => {
           
           // Valida se o status real devolvido bate com o previsto pelo Gemini

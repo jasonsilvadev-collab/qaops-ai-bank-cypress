@@ -16,7 +16,13 @@ export const options = {
 export default function () {
   const url = 'https://reqres.in/api/register';
   const payload = JSON.stringify({ email: 'eve.holt@reqres.in', password: 'pistol' });
-  const params = { headers: { 'Content-Type': 'application/json' } };
+  const apiKey = __ENV.REQRES_API_KEY || '';
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
+    headers['X-Reqres-Env'] = 'prod';
+  }
+  const params = { headers };
 
   const res = http.post(url, payload, params);
 

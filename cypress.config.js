@@ -6,7 +6,11 @@ const {GoogleGenerativeAI} = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 module.exports = defineConfig({
-  e2e:{
+  e2e: {
+    // Repositório de variáveis expostas em Cypress.env(...) nos specs
+    env: {
+      REQRES_API_KEY: process.env.REQRES_API_KEY || "",
+    },
     setupNodeEvents(on, config){
       async function gerarMassaDeDadosRegistro() {
         if (!process.env.GEMINI_API_KEY) {
@@ -20,7 +24,12 @@ module.exports = defineConfig({
             process.env.GEMINI_MODEL || "gemini-2.5-flash";
           const model = genAI.getGenerativeModel({ model: modelId });
           const prompt = `Você é um QA Engineer Sênior. Retorne APENAS um array JSON válido, sem formatação markdown (sem aspas crases ou a palavra json).
-            Gere 3 cenários de teste para uma API de Registro de Usuários. A API exige e-mails válidos como 'eve.holt@reqres.in'. O JSON deve ter os campos: 'titulo' (string), 'email' (string), 'password' (string, deixe vazia para forçar erro) e 'statusCodeEsperado' (number, 200 para sucesso com dados completos, 400 para erro se faltar a password).`;
+            Gere exatamente 3 cenários de teste para POST https://reqres.in/api/register (JSON body: email, password).
+            Cada objeto deve ter: 'titulo' (string), 'email' (string), 'password' (string), 'statusCodeEsperado' (number).
+            Regras obrigatórias:
+            - Para exatamente UM cenário com statusCodeEsperado 200 (sucesso), use SEMPRE email "eve.holt@reqres.in" e password "pistol" (único par que o mock ReqRes devolve token).
+            - Para os outros cenários com statusCodeEsperado 400, use password vazia "" ou omita o campo password no JSON do cenário (o cliente de teste enviará string vazia), e email pode ser "eve.holt@reqres.in" ou outro formato inválido.
+            Não use status 401 nos cenários gerados.`;
           const result = await model.generateContent(prompt);
           const responseText = result.response.text();
           const cleanJson = responseText.replace(/```json|```/g, "").trim();
