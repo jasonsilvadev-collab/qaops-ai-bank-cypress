@@ -29,12 +29,12 @@ async function postRegisterOnce(body, apiKey) {
 
 /** Orçamento máximo para ReqRes dentro da task (evita ultrapassar o timeout do Cypress). */
 const REQRES_TASK_BUDGET_MS =
-  Number(process.env.REQRES_TASK_BUDGET_MS) || 200000;
+  Number(process.env.REQRES_TASK_BUDGET_MS) || 90000;
 
 async function postRegisterComBackoff(body, apiKey, aggressive, deadlineMs) {
   const delaysMs = aggressive
-    ? [2500, 6000, 12000, 20000, 35000]
-    : [1500, 4000, 9000];
+    ? [800, 2000, 5000, 12000, 25000]
+    : [500, 2000, 6000];
 
   let out = await postRegisterOnce(body, apiKey);
   if (out.status !== 429) {
