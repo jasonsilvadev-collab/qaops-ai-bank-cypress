@@ -1,0 +1,36 @@
+const {defineConfig} = require("cypress");
+const {GoogleGenerativeAI} = require("@google/generative-ai")
+
+// Inicializar o cliente do Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+module.exports = defineConfig({
+  e2e:{
+    setupNodeEvents(on, config){
+      on("task",{
+        async gerarMassaDeDadosRegistro(){
+          try{
+            // Usamos o modelo Flash
+            const model = genAI.getGenerativeModel({model:"gemini-1.5-flash"});
+            const prompt = `Você é um QA Engineer Sênior. Retorne APENAS um array JSON válido, sem formatação markdown (sem aspas crases ou a palavra json).
+            Gere 3 cenários de teste para uma API de Registro de Usuários. A API exige e-mails válidos como 'eve.holt@reqres.in'. O JSON deve ter os campos: 'titulo' (string), 'email' (string), 'password' (string, deixe vazia para forçar erro) e 'statusCodeEsperado' (number, 200 para sucesso com dados completos, 400 para erro se faltar a password).`;
+            const result = await model.generateContent(prompt);
+            const responseText = result.response.text();
+            // Limpa formatação para evitar quebra no json
+            const cleanJson = responseText.replace(/```json|```/g, "").trim();
+            return JSON.parse(cleanJson)
+
+          }catch(error){
+            console.error("Erro na integração com o Gemini",error);
+            return null;
+          }
+        }
+      });
+      return config;
+    }
+  }
+})
+
+
+
+

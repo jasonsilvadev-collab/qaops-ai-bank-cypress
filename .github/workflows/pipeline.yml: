@@ -1,0 +1,33 @@
+name: Framework QAOps - Google Gemini & K6
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  cypress-ai-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fazer Checkout do Código
+        uses: actions/checkout@v4
+        
+      - name: Instalar Dependências do Node.js
+        run: npm ci
+        
+      - name: Executar Testes Cypress (Com Gemini)
+        uses: cypress-io/github-action@v6
+        env:
+          # Injeta a chave do Google de forma segura no pipeline
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }} 
+
+  k6-load-tests:
+    runs-on: ubuntu-latest
+    needs: cypress-ai-tests
+    steps:
+      - name: Fazer Checkout do Código
+        uses: actions/checkout@v4
+        
+      - name: Executar Testes de Carga com K6 (reqres.in)
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: performance/load-test.js
