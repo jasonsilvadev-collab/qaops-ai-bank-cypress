@@ -3,7 +3,7 @@ describe('API - Fluxo de Registro de Usuário guiado pelo Google Gemini', () => 
   it('Deve gerar cenários dinâmicos e validar o comportamento da API reqres.in', () => {
     
     // O Cypress pede à IA do Google para gerar os cenários
-    cy.task('gerarMassaDeDadosRegisto').then((cenariosGerados) => {
+    cy.task('gerarMassaDeDadosRegistro').then((cenariosGerados) => {
       expect(cenariosGerados).to.be.an('array').that.is.not.empty;
 
       // Para cada cenário que o Gemini inventou, executamos um teste
