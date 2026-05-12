@@ -27,21 +27,29 @@ async function postRegisterOnce(body, apiKey) {
   return { status: res.status, body: json };
 }
 
-/**
- * ReqRes em CI (IPs partilhados) devolve muito 429. Retries no Node não competem
- * com o timeout de comandos do Cypress e permitem esperas longas.
- */
-async function postRegisterComBackoff(body, apiKey, aggressive) {
+/** Orçamento máximo para ReqRes dentro da task (evita ultrapassar o timeout do Cypress). */
+const REQRES_TASK_BUDGET_MS =
+  Number(process.env.REQRES_TASK_BUDGET_MS) || 200000;
+
+async function postRegisterComBackoff(body, apiKey, aggressive, deadlineMs) {
   const delaysMs = aggressive
-    ? [4000, 12000, 22000, 35000, 50000, 70000]
-    : [2000, 6000, 14000];
+    ? [2500, 6000, 12000, 20000, 35000]
+    : [1500, 4000, 9000];
 
   let out = await postRegisterOnce(body, apiKey);
   if (out.status !== 429) {
     return out;
   }
   for (const ms of delaysMs) {
-    await sleep(ms);
+    const now = Date.now();
+    if (now >= deadlineMs) {
+      return out;
+    }
+    const wait = Math.min(ms, deadlineMs - now);
+    if (wait < 400) {
+      return out;
+    }
+    await sleep(wait);
     out = await postRegisterOnce(body, apiKey);
     if (out.status !== 429) {
       return out;
@@ -55,7 +63,11 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 module.exports = defineConfig({
   e2e: {
-    taskTimeout: 240000,
+    // Margem sobre REQRES_TASK_BUDGET_MS + esperas entre cenários + rede
+    taskTimeout: Math.min(
+      900000,
+      REQRES_TASK_BUDGET_MS + 120000
+    ),
     // Repositório de variáveis expostas em Cypress.env(...) nos specs
     env: {
       REQRES_API_KEY: process.env.REQRES_API_KEY || "",
@@ -99,6 +111,7 @@ module.exports = defineConfig({
         if (!Array.isArray(cenarios) || cenarios.length === 0) {
           throw new Error("cenarios deve ser um array não vazio");
         }
+        const deadline = Date.now() + REQRES_TASK_BUDGET_MS;
         // Cenário 200 primeiro (token) — tende a ser o mais sensível ao rate limit
         const sorted = [...cenarios].sort((a, b) => {
           if (a.statusCodeEsperado === 200 && b.statusCodeEsperado !== 200) {
@@ -114,7 +127,10 @@ module.exports = defineConfig({
         for (let i = 0; i < sorted.length; i++) {
           const cenario = sorted[i];
           if (i > 0) {
-            await sleep(3000);
+            const gap = Math.min(2500, Math.max(0, deadline - Date.now()));
+            if (gap >= 400) {
+              await sleep(gap);
+            }
           }
           const body = {
             email: cenario.email,
@@ -124,7 +140,8 @@ module.exports = defineConfig({
           const { status, body: resBody } = await postRegisterComBackoff(
             body,
             apiKey,
-            aggressive
+            aggressive,
+            deadline
           );
           results.push({
             titulo: cenario.titulo,
