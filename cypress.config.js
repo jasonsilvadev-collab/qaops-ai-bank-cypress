@@ -2,11 +2,60 @@ require("dotenv").config();
 const {defineConfig} = require("cypress");
 const {GoogleGenerativeAI} = require("@google/generative-ai");
 
+const REQRES_REGISTER_URL = "https://reqres.in/api/register";
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function postRegisterOnce(body, apiKey) {
+  const res = await fetch(REQRES_REGISTER_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "X-Reqres-Env": "prod",
+    },
+    body: JSON.stringify(body),
+  });
+  let json = {};
+  try {
+    json = await res.json();
+  } catch (_) {
+    /* corpo vazio ou não-JSON */
+  }
+  return { status: res.status, body: json };
+}
+
+/**
+ * ReqRes em CI (IPs partilhados) devolve muito 429. Retries no Node não competem
+ * com o timeout de comandos do Cypress e permitem esperas longas.
+ */
+async function postRegisterComBackoff(body, apiKey, aggressive) {
+  const delaysMs = aggressive
+    ? [4000, 12000, 22000, 35000, 50000, 70000]
+    : [2000, 6000, 14000];
+
+  let out = await postRegisterOnce(body, apiKey);
+  if (out.status !== 429) {
+    return out;
+  }
+  for (const ms of delaysMs) {
+    await sleep(ms);
+    out = await postRegisterOnce(body, apiKey);
+    if (out.status !== 429) {
+      return out;
+    }
+  }
+  return out;
+}
+
 // Inicializar o cliente do Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 module.exports = defineConfig({
   e2e: {
+    taskTimeout: 240000,
     // Repositório de variáveis expostas em Cypress.env(...) nos specs
     env: {
       REQRES_API_KEY: process.env.REQRES_API_KEY || "",
@@ -40,10 +89,57 @@ module.exports = defineConfig({
         }
       }
 
+      async function executarCenariosRegistoReqres({ cenarios }) {
+        const apiKey = process.env.REQRES_API_KEY;
+        if (!apiKey) {
+          throw new Error(
+            "REQRES_API_KEY em falta no processo Node (defina no .env ou no CI)."
+          );
+        }
+        if (!Array.isArray(cenarios) || cenarios.length === 0) {
+          throw new Error("cenarios deve ser um array não vazio");
+        }
+        // Cenário 200 primeiro (token) — tende a ser o mais sensível ao rate limit
+        const sorted = [...cenarios].sort((a, b) => {
+          if (a.statusCodeEsperado === 200 && b.statusCodeEsperado !== 200) {
+            return -1;
+          }
+          if (b.statusCodeEsperado === 200 && a.statusCodeEsperado !== 200) {
+            return 1;
+          }
+          return 0;
+        });
+
+        const results = [];
+        for (let i = 0; i < sorted.length; i++) {
+          const cenario = sorted[i];
+          if (i > 0) {
+            await sleep(3000);
+          }
+          const body = {
+            email: cenario.email,
+            password: cenario.password ?? "",
+          };
+          const aggressive = cenario.statusCodeEsperado === 200;
+          const { status, body: resBody } = await postRegisterComBackoff(
+            body,
+            apiKey,
+            aggressive
+          );
+          results.push({
+            titulo: cenario.titulo,
+            statusCodeEsperado: cenario.statusCodeEsperado,
+            statusRecebido: status,
+            body: resBody,
+          });
+        }
+        return results;
+      }
+
       on("task", {
         gerarMassaDeDadosRegistro,
-        // alias (PT-PT) — mesmo handler
         gerarMassaDeDadosRegisto: gerarMassaDeDadosRegistro,
+        executarCenariosRegistoReqres,
       });
       return config;
     }
